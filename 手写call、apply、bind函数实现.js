@@ -28,3 +28,21 @@ const _this = { name: 'Alia' }
 
 fun.myCall(_this, 1, 2);
 
+
+/**
+ * 自定义 apply 实现
+ * @param context   上下文this对象
+ * @param args      参数数组
+ */
+Function.prototype.myApply = function(context, args) {
+    context = (typeof context === 'object' ? context : window);
+    const key = Symbol();
+    context[key] = this;
+    // 与 call 唯一的不同在于参数为数组
+    const result = context[key](...args);
+    delete context[key];
+    return result;
+}
+
+// 验证样例
+fun.myApply(_this, 1, 2);
