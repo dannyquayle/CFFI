@@ -1,7 +1,7 @@
 /*
  * @Author: Quayle
  * @Date: 2020-08-06 14:49:53
- * @LastEditTime: 2020-08-07 20:24:23
+ * @LastEditTime: 2020-08-07 22:12:58
  * @LastEditors: Please set LastEditors
  * @Description: shallow & deep clone ref 2 lodash.js
  * @FilePath: /Code For Front-end Interview/浅拷贝与深拷贝.js
@@ -51,6 +51,25 @@ const target4 = {
     set: new Set().add('Wat r u looking 4')
 };
 
+const target5 = {
+    field1: 1,
+    field2: undefined,
+    field3: {
+        child: 'child'
+    },
+    field4: [2, 4, 8],
+    empty: null,
+    map: new Map().set('name', 'Diana'),
+    set: new Set().add('Wat r u looking 4'),
+    bool: new Boolean(true),
+    num: new Number(2),
+    str: new String(2),
+    symbol: Object(Symbol(1)),
+    date: new Date(),
+    reg: /\d+/,
+    error: new Error()
+};
+
 /** Object#toString result refs. */
 const mapTag = '[object Map]';
 const setTag = '[object Set]';
@@ -64,6 +83,8 @@ const numberTag = '[object Number]';
 const regexpTag = '[object RegExp]';
 const stringTag = '[object String]';
 const symbolTag = '[object Symbol]';
+
+const iterableTag = [mapTag, setTag, arrayTag, objectTag];
 
 /**
  * 用 while 实现的 forEach 函数。
@@ -84,7 +105,7 @@ function forEach(array, iteratee) {
 /**
  * 获取 target 的准确引用类型。
  * 
- * 使用 Object.prototype.toString 方法来获取准确的引用类型，返回 '[object type]'，其中type是对象的类型  
+ * 使用 Object.prototype.toString 方法来获取准确的引用类型，返回 '[object type]'，其中type是对象的类型
  * 事实上，大部分引用类型比如 Array、Date、RegExp 等都重写了自己的 toString 方法，要直接使用 Object.prototype.toString 需要使用 call 来改变 this 的指向。
  * 
  * @param {*} target  需要判断的值。
@@ -95,13 +116,15 @@ function getType(target) {
 }
 
 /**
- * 判断是否为引用类型。
+ * 判断原始类型或引用类型。
  * 
- * 注意：typeof null === 'object', typeof Function === 'function'   
- * 引用类型 target 包含 object 与 function 不包括 null。
+ * typeof target === 'object' 为引用类型；其余为原始类型。
+ * 两个例外:
+ * 基本类型 number, string, boolean, symbol, undefined, null 中 null 为例外：typeof null === 'object'；
+ * 引用类型中 Funtion 为例外，typeof function() === 'function'。
  * 
  * @param {*} target 需要判断的值。
- * @returns {Boolean} 引用类型返回 true，否则返回 false。
+ * @returns {Boolean} 引用类型返回 true，原始类型返回 false。
  */
 function isObject(target) {
     const type = typeof target;
@@ -111,12 +134,62 @@ function isObject(target) {
 /**
  * 初始化传入值的同类型对象。
  * 
- * @param {*} target 传入值
- * @returns {*} 返回由传入值的 constructor 初始化的一个对象
+ * @param {*} target 传入值。
+ * @returns {*} 返回由传入值的 constructor 初始化的一个对象。
  */
 function getInit(target) {
     const Ctor = target.constructor;
     return new Ctor();
+}
+
+/**
+ * 克隆不可遍历类型的对象。
+ * 
+ * 直接用构造函数和原始数据创建一个新对象。
+ * 
+ * @param {Object} target 需要拷贝的不可遍历的对象。
+ * @param {Object} type 对象的具体类型。
+ * @returns {Object} 返回克隆值。
+ */
+function cloneOtherType(target, type) {
+    const Ctor = target.constructor;
+    switch (type) {
+        case boolTag:
+        case numberTag:
+        case stringTag:
+        case errorTag:
+        case dateTag:
+            return new Ctor(target);
+        case regexpTag:
+            return cloneReg(target);
+        case symbolTag:
+            return cloneSymbol(target);
+        default:
+            return null;
+    }
+}
+
+/**
+ * 克隆正则。
+ * 
+ * @param {RegExp} target 需克隆的正则。
+ * @returns {RegExp} 返回克隆值。
+ */
+function cloneReg(target) {
+    const reFlags = /\w*$/;
+    const result = new target.constructor(target.source, reFlags.exec(target));
+    result.lastIndex = target.lastIndex;
+    return result;
+}
+
+/**
+ * 克隆 Symbol 对象。
+ * 
+ * @param {Symbol} target 需克隆的 Symbol 对象。
+ * @returns {Symbol} 返回克隆值。
+ */
+function cloneSymbol(target) {
+    return Object(Symbol.prototype.valueOf.call(target));
 }
 
 /**
@@ -247,7 +320,8 @@ function cloneDeepV4(target, map = new Map()) {
 /**
  * 创建一个 target 的深拷贝。
  * 
- * 在 cloneDeepV4 方法上，除原始的 Object, Array 引用类型的克隆外，新兼容了 Map，Set。
+ * 在 cloneDeepV4 方法上，除原始支持克隆的引用类型 Object, Array 外，新兼容了可遍历对象：Map，Set；
+ * 不可遍历对象：Error, Date, RegExp, Date 以及基本类型包装器 Boolean, Symbol 等
  * 
  * @param {*} target 需要拷贝的值。
  * @param {Object} map 保存拷贝过的对象。
@@ -262,7 +336,15 @@ function cloneDeepV5(target, map = new Map()) {
 
     // 对于引用类型的初始化
     const type = getType(target);
-    let cloneTarget = getInit(target);
+    let cloneTarget;
+    // 初始化可遍历类型
+    if (iterableTag.includes(type)) {
+        cloneTarget = getInit(target);
+    }
+    // 不可遍历类型不经过初始化直接克隆
+    else {
+        return cloneOtherType(target, type);
+    }
 
     // 防止循环引用
     if (map.get(target)) {
@@ -270,7 +352,7 @@ function cloneDeepV5(target, map = new Map()) {
     }
     map.set(target, cloneTarget);
 
-    // 克隆set
+    // 克隆 set
     if (type === setTag) {
         target.forEach(value => {
             cloneTarget.add(cloneDeepV5(value,map));
@@ -278,7 +360,7 @@ function cloneDeepV5(target, map = new Map()) {
         return cloneTarget;
     }
 
-    // 克隆map
+    // 克隆 map
     if (type === mapTag) {
         target.forEach((value, key) => {
             cloneTarget.set(key, cloneDeepV5(value,map));
@@ -297,4 +379,7 @@ function cloneDeepV5(target, map = new Map()) {
 
     return cloneTarget;
 }
+
+
+
 
